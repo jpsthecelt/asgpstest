@@ -9,7 +9,13 @@
 # Copyright (c) 2018 Peter Hinch
 # Released under the MIT License (MIT) - see LICENSE file
 # Run under CPython 3.5+ or MicroPython
-# import pyb
+# import pybp
+# import serial
+import aioserial
+import argparse
+from collections import deque
+import logging
+
 import asyncio
 import aswitch
 import as_GPS
@@ -86,30 +92,24 @@ async def date(gps):
         print()
 
 async def gps_test():
-    print('Initialising')
-    # Adapt for other MicroPython hardware
-    uart = UART(4, 9600, read_buf_len=200)
-    # read_buf_len is precautionary: code runs reliably without it.)
-    sreader = asyncio.StreamReader(uart)
-    timer = aswitch.Delay_ms(timeout)
-    sentence_count = 0
-    gps = as_GPS.AS_GPS(sreader, local_offset=1, fix_cb=callback, fix_cb_args=(timer,))
-    loop = asyncio.get_event_loop()
-    print('awaiting first fix')
-    loop.create_task(sat_test(gps))
-    loop.create_task(stats(gps))
-    loop.create_task(navigation(gps))
-    loop.create_task(course(gps))
-    loop.create_task(date(gps))
+    try:
+        logging.info('\nClearing out GPS channel...')
+        [print("Synchroizing...: {}".format((await aioserial.AioSerial(port=results.gps_device_string).readline_async()).decode('utf8', errors='ignore'),
+               end='', flush=True)) for i in range(5)]
+        timer = aswitch.Delay_ms(timeout)
+        sentence_count = 0
 
+        gps = as_GPS.AS_GPS(results.gps_device_string, local_offset=1, fix_cb=callback, fix_cb_args=(timer,))
+        loop = asyncio.get_event_loop()
+        logging.info('\nawaiting first fix')
+        loop.create_task(sat_test(gps))
+        loop.create_task(stats(gps))
+        loop.create_task(navigation(gps))
+        loop.create_task(course(gps))
+        loop.create_task(date(gps))
+    except:
+        pass
 
-import as_GPS
-import asyncio
-# import pdb;pdb.set_trace()
-#try:
-#    import uasyncio as asyncio
-#except ImportError:
-#    import asyncio
 
 async def run():
     sentence_count = 0
@@ -265,51 +265,22 @@ async def run():
     print('Unsupported sentences:', my_gps.unsupported_sentences)
     print('CRC_Fails:', my_gps.crc_fails)
 
-# Given an NMEA input string (from attached GPS device), parse and either return it's T/S,
-#       alt, lat/lon, etc (as a JSON dict) from the GGA message, add message-type to the
-#       discardQ (based on command-line 'verbose' switch), finally returning JSON dict message),
-#       or else return parse-error message.
-def parseGPS(raw_mesg, discardIt):
-    # try parsing NMEA message - if it fails, return error
-    #                            if it succeeds, look for a message type of 'GGA'
-    try:
-        msg = pynmea2.parse(raw_mesg)
-    except pynmea2.ParseError:
-        return ( nmea_msg(timestamp = gmtime(), lat=0.0, lat_dir='0', lon=0.0, lon_dir='0', altitude=0.0, alt_units='M',
-             got_fix=False, num_sats=0, error_msg=f"Parse-Error: {raw_mesg}"))
-
-    # if msg-type is not GGA, add the message to the discarded-Q and return appropriate error-message
-    # if the msg-type IS GGA, return the timestamp/altitude-lat-lon, etc information
-    if msg.sentence_type != 'GGA':
-        discardQ.append(msg.sentence_type)
-        if discardIt:
-            return ( nmea_msg(timestamp = gmtime(), lat=0.0, lat_dir='0', lon=0.0, lon_dir='0', altitude=0.0, alt_units='M',
-                 got_fix=False, num_sats=0, error_msg=f"Discarded: {msg.sentence_type}"))
-        else:
-            return ( nmea_msg(timestamp = gmtime(), lat=0.0, lat_dir='0', lon=0.0, lon_dir='0', altitude=0.0, alt_units='M',
-                 got_fix=False, num_sats=0, error_msg=f"Not-Discarded: {msg.sentence_type}"))
-    else:
-        # (recall that gps_qual == 0 is 'no fix', or fix=False, 1 == fix, 2-5 are fix-other)
-        fix = msg.gps_qual == 1
-        return (nmea_msg(timestamp=msg.timestamp, lat=(msg.lat or 0.0), lat_dir=msg.lat_dir, lon=(msg.lon or 0.0), lon_dir=msg.lon_dir,
-                altitude=(msg.altitude or 0.0), altitude_units=(msg.altitude_units or 'M'), got_fix=fix, error_msg=''))
-
-def update_gps():
-    try:
-        with serial.Serial(results.gps_device_string, 9600, timeout=0.5) as gIn:
-            [print("Synchronizing...: {}".format(gIn.readline().decode('ascii', errors='replace'))) for i in range(5)]
-
-            # Then, while it is possible to read messages from the serial-input, read & parse input data
-            #       printing out result
-            while True:
-                print(json.dumps(parseGPS(gIn.readline().decode('ascii', errors='replace'), results.v)))
-                time.sleep(1)
-
-    # process any system-exit errors or ^c received, outputting our discardQ contents 'before we go'
-    except (KeyboardInterrupt,SystemExit):
-        print("...Terminated!")
-        print(f"Last {len(discardQ)} discarded messages were {discardQ}\n\n")
-        sys.exit()
+#def update_gps():
+#    try:
+#        with serial.Serial(results.gps_device_string, 9600, timeout=0.5) as gIn:
+#            [print("Synchronizing...: {}".format(gIn.readline().decode('ascii', errors='replace'))) for i in range(5)]
+#
+#            # Then, while it is possible to read messages from the serial-input, read & parse input data
+#            #       printing out result
+#            while True:
+#                print(json.dumps(parseGPS(gIn.readline().decode('ascii', errors='replace'), results.v)))
+#                time.sleep(1)
+#
+#    # process any system-exit errors or ^c received, outputting our discardQ contents 'before we go'
+#    except (KeyboardInterrupt,SystemExit):
+#        print("...Terminated!")
+#        print(f"Last {len(discardQ)} discarded messages were {discardQ}\n\n")
+#        sys.exit()
 
 def run_tests():
     loop = asyncio.get_event_loop()
@@ -319,6 +290,11 @@ if __name__ == "__main__":
     # run_tests()
     # Initialize discardQ list and and serial-input channel; clearing out any 'framing errors' in receiving-channel
     #            (we chose to clear out 5 of them)
+    format = "%(asctime)s: %(message)s"
+    logging.basicConfig(format=format, level=logging.INFO,
+                        datefmt="%H:%M:%S")
+    logging.getLogger().setLevel(logging.INFO)
+
     QMAX = 100
     discardQ = deque(maxlen=QMAX)
     parser = argparse.ArgumentParser(description='Grab and display incoming GPS messages via flask website')
