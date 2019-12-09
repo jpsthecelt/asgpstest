@@ -22,6 +22,7 @@ except ImportError:
     const = lambda x : x
 
 from math import modf
+from collections import deque
 
 # Angle formats
 DD = const(1)
@@ -94,6 +95,7 @@ class AS_GPS(object):
         self._fix_cb = fix_cb
         self.cb_mask = cb_mask
         self._fix_cb_args = fix_cb_args
+        self._lastRxMsg = deque(maxlen=1)
         self.battery = False  # Assume no backup battery
 
         # CPython compatibility. Import utime or time for fix time handling.
@@ -180,9 +182,10 @@ class AS_GPS(object):
 
     async def _run(self, loop):
         while True:
-            res = await self._sreader.readline()
+#            res = await self._sreader.readline()
             try:
-                res = res.decode('utf8')
+                res = (await self._sreader.readline_async()).decode('utf8', errors='ignore')
+#                res = res.decode('utf8')
             except UnicodeError:  # Garbage: can happen e.g. on baudrate change
                 continue
             loop.create_task(self._update(res))
