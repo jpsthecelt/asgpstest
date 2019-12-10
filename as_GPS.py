@@ -23,6 +23,7 @@ except ImportError:
 
 from math import modf
 from collections import deque
+import aioserial
 
 # Angle formats
 DD = const(1)
@@ -91,7 +92,7 @@ class AS_GPS(object):
         return crc_xor == crc
 
     def __init__(self, sreader, local_offset=0, fix_cb=lambda *_ : None, cb_mask=RMC, fix_cb_args=()):
-        self._sreader = sreader  # If None testing: update is called with simulated data
+        self._sreader = aioserial.AioSerial(port=sreader)  # If None testing: update is called with simulated data
         self._fix_cb = fix_cb
         self.cb_mask = cb_mask
         self._fix_cb_args = fix_cb_args
@@ -183,9 +184,9 @@ class AS_GPS(object):
     async def _run(self, loop):
         while True:
 #            res = await self._sreader.readline()
+#            res = res.decode('utf8')
             try:
                 res = (await self._sreader.readline_async()).decode('utf8', errors='ignore')
-#                res = res.decode('utf8')
             except UnicodeError:  # Garbage: can happen e.g. on baudrate change
                 continue
             loop.create_task(self._update(res))
