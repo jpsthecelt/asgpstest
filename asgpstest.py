@@ -93,12 +93,10 @@ async def date(gps):
 
 async def gps_test():
     try:
-        logging.info('\nClearing out GPS channel...')
-        [print("Synchroizing...: {}".format((await aioserial.AioSerial(port=results.gps_device_string).readline_async()).decode('utf8', errors='ignore'),
-               end='', flush=True)) for i in range(5)]
         timer = aswitch.Delay_ms(timeout)
         sentence_count = 0
 
+        # create GPS object, init event loop, and clear out channel
         gps = as_GPS.AS_GPS(results.gps_device_string, local_offset=1, fix_cb=callback, fix_cb_args=(timer,))
         loop = asyncio.get_event_loop()
         logging.info('\nawaiting first fix')

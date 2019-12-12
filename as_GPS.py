@@ -91,8 +91,19 @@ class AS_GPS(object):
             x += 1
         return crc_xor == crc
 
-    def __init__(self, sreader, local_offset=0, fix_cb=lambda *_ : None, cb_mask=RMC, fix_cb_args=()):
-        self._sreader = aioserial.AioSerial(port=sreader)  # If None testing: update is called with simulated data
+    def __init__(self, portName, local_offset=0, fix_cb=lambda *_ : None, cb_mask=RMC, fix_cb_args=()):
+        try:
+            # If None testing: update is called with simulated data
+            if portName == None:
+                self._sreader = portName
+            else:
+                self._sreader = aioserial.AioSerial(port=portName)  
+                [print("Synchronizing...: {}".format((await aioserial.AioSerial(port=results.gps_device_string).readline_async()).decode('utf8', errors='ignore'),
+                       end='', flush=True)) for i in range(5)]
+        except:
+            portName = None
+            continue
+
         self._fix_cb = fix_cb
         self.cb_mask = cb_mask
         self._fix_cb_args = fix_cb_args
@@ -174,6 +185,7 @@ class AS_GPS(object):
         # Received status
         self._valid = 0  # Bitfield of received sentences
         if sreader is not None:  # Running with UART data
+            logging.info('\nGot device -- Creating run loop')
             loop = asyncio.get_event_loop()
             loop.create_task(self._run(loop))
 
